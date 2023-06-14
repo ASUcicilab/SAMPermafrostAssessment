@@ -15,7 +15,6 @@ predictions_for_paper/
 # pretrained_weights
 pretrained_weights/
 
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
