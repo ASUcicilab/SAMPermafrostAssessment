@@ -36,7 +36,9 @@ logger = logging.getLogger("detectron2")
 def do_test(cfg, model):
     if "evaluator" in cfg.dataloader:
         ret = inference_on_dataset(
-            model, instantiate(cfg.dataloader.test), instantiate(cfg.dataloader.evaluator)
+            model,
+            instantiate(cfg.dataloader.test),
+            instantiate(cfg.dataloader.evaluator),
         )
         print_csv_format(ret)
         return ret
@@ -77,7 +79,9 @@ def do_train(args, cfg):
     train_loader = instantiate(cfg.dataloader.train)
 
     model = create_ddp_model(model, **cfg.train.ddp)
-    trainer = (AMPTrainer if cfg.train.amp.enabled else SimpleTrainer)(model, train_loader, optim)
+    trainer = (AMPTrainer if cfg.train.amp.enabled else SimpleTrainer)(
+        model, train_loader, optim
+    )
     checkpointer = DetectionCheckpointer(
         model,
         cfg.train.output_dir,
@@ -87,16 +91,20 @@ def do_train(args, cfg):
         [
             hooks.IterationTimer(),
             hooks.LRScheduler(scheduler=instantiate(cfg.lr_multiplier)),
-            hooks.PeriodicCheckpointer(checkpointer, **cfg.train.checkpointer)
-            if comm.is_main_process()
-            else None,
+            (
+                hooks.PeriodicCheckpointer(checkpointer, **cfg.train.checkpointer)
+                if comm.is_main_process()
+                else None
+            ),
             hooks.EvalHook(cfg.train.eval_period, lambda: do_test(cfg, model)),
-            hooks.PeriodicWriter(
-                default_writers(cfg.train.output_dir, cfg.train.max_iter),
-                period=cfg.train.log_period,
-            )
-            if comm.is_main_process()
-            else None,
+            (
+                hooks.PeriodicWriter(
+                    default_writers(cfg.train.output_dir, cfg.train.max_iter),
+                    period=cfg.train.log_period,
+                )
+                if comm.is_main_process()
+                else None
+            ),
         ]
     )
 
@@ -111,7 +119,8 @@ def do_train(args, cfg):
 
 
 def get_data_dicts(dataset, split):
-    import json 
+    import json
+
     dataset_dics = json.load(open("data/{}/{}_{}.json".format(dataset, dataset, split)))
     return dataset_dics
 
@@ -122,8 +131,9 @@ def main(args):
         DatasetCatalog.register(
             args.dataset + "_" + d, lambda d=d: get_data_dicts(args.dataset, d)
         )
-        MetadataCatalog.get(args.dataset + "_" + d).set(thing_classes=args.things_classes)
-
+        MetadataCatalog.get(args.dataset + "_" + d).set(
+            thing_classes=args.things_classes
+        )
 
     cfg = LazyConfig.load(args.config_file)
     cfg = LazyConfig.apply_overrides(cfg, args.opts)
@@ -137,20 +147,18 @@ def main(args):
     # customize train parameters
     cfg.train.output_dir = args.output_dir
     cfg.train.init_checkpoint = args.init_checkpoint
-    cfg.train.max_iter = args.epoch * len(DatasetCatalog.get(args.dataset + "_train")) // args.batch_size
+    cfg.train.max_iter = (
+        args.epoch * len(DatasetCatalog.get(args.dataset + "_train")) // args.batch_size
+    )
     cfg.train.checkpointer.period = args.checkpoint_period
     cfg.train.eval_period = args.eval_period
-    cfg.train.seed = args.seed 
+    cfg.train.seed = args.seed
 
     # customize lr_multiplier parameters
     # customize dataloader parameters
     cfg.dataloader.train.dataset.names = args.dataset + "_train"
-    cfg.dataloader.test.dataset.names  = args.dataset + "_test"
-    #cfg.dataloader.train.dataset.name = args.dataset + "_train"
-    #fg.dataloader.train.dataset._target_ = lambda names: DatasetCatalog.get(names) 
+    cfg.dataloader.test.dataset.names = args.dataset + "_test"
     cfg.dataloader.train.total_batch_size = args.batch_size
-    #cfg.dataloader.test.dataset.name = args.dataset + "_test"
-    #cfg.dataloader.test.dataset._target_ = lambda names: DatasetCatalog.get(names)
     cfg.dataloader.evaluator.max_dets_per_image = args.detections_per_img
     cfg.dataloader.evaluator.output_dir = args.output_dir
 
@@ -181,17 +189,22 @@ if __name__ == "__main__":
     args.epoch = 100
     args.checkpoint_period = 200
     args.eval_period = 200
-    args.output_dir = 'experiments/mvitv2/results/{}/mvitv2_b_in21k'.format(args.dataset)
-    
-    
+    args.output_dir = "experiments/mvitv2/results/{}/mvitv2_b_in21k".format(
+        args.dataset
+    )
+
     if args.dataset == "iwp":
         args.anchor_sizes = [[32], [64], [128], [256], [512]]
         args.detections_per_img = 500
     elif args.dataset == "rts":
-        args.batch_size = 8
         args.anchor_sizes = [[16], [32], [64], [128], [256]]
-        args.detections_per_img = 100 
-    
+        args.detections_per_img = 100
+    elif args.dataset == "agr":
+        args.anchor_sizes = [[16], [32], [64], [128], [256]]
+        args.detections_per_img = 100
+    else:
+        raise ValueError("Invalid dataset name")
+
     launch(
         main,
         args.num_gpus,

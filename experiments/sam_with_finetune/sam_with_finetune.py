@@ -105,7 +105,7 @@ def customMapper(dataset_dict, training=True, prompt="bbox"):
         point_coords = torch.as_tensor(point_coords, dtype=torch.float32).unsqueeze(1)
         dataset_dict["point_coords"] = point_coords
         dataset_dict["point_labels"] = torch.ones(len(point_coords), 1)
-        
+
     dataset_dict.pop("annotations", None)
 
     return dataset_dict
@@ -483,9 +483,7 @@ if __name__ == "__main__":
         args.dataset, args.prompt
     )
     args.port = (
-        2**15
-        + 2**14
-        + hash(os.getuid() if sys.platform != "win32" else 1) % 2**14
+        2**15 + 2**14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2**14
     )
     args.dist_url = "tcp://127.0.0.1:{}".format(args.port)
 
@@ -495,6 +493,10 @@ if __name__ == "__main__":
         args.eval_period = 10
         args.checkpoint_period = 10
     elif args.dataset == "rts":
+        args.max_dets_per_img = 100
+        args.eval_period = 10
+        args.checkpoint_period = 10
+    elif args.dataset == "agr":
         args.max_dets_per_img = 100
         args.eval_period = 10
         args.checkpoint_period = 10

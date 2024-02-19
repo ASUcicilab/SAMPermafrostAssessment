@@ -159,6 +159,8 @@ if __name__ == "__main__":
         args.max_dets_per_image = 500
     elif args.dataset == "rts":
         args.max_dets_per_image = 100
+    elif args.dataset == "agr":
+        args.max_dets_per_image = 100
     else:
         # raise error if the dataset is not supported
         raise ValueError("Dataset {} is not supported.".format(args.dataset))

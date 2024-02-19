@@ -19,9 +19,15 @@ import torch
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import LazyConfig, instantiate
 from detectron2.data import DatasetCatalog, MetadataCatalog
-from detectron2.engine import (AMPTrainer, SimpleTrainer,
-                               default_argument_parser, default_setup,
-                               default_writers, hooks, launch)
+from detectron2.engine import (
+    AMPTrainer,
+    SimpleTrainer,
+    default_argument_parser,
+    default_setup,
+    default_writers,
+    hooks,
+    launch,
+)
 from detectron2.evaluation import inference_on_dataset, print_csv_format
 from detectron2.utils import comm
 from segment_anything import sam_model_registry
@@ -33,7 +39,9 @@ logger = logging.getLogger("detectron2")
 def maskrcnn_eval(cfg, model):
     if "evaluator" in cfg.dataloader:
         ret = inference_on_dataset(
-            model, instantiate(cfg.dataloader.test), instantiate(cfg.dataloader.evaluator)
+            model,
+            instantiate(cfg.dataloader.test),
+            instantiate(cfg.dataloader.evaluator),
         )
         print_csv_format(ret)
         return ret
@@ -50,7 +58,7 @@ def sam_maskrcnn_eval(cfg, maskrcnn):
     )
     sam.to(cfg.train.device)
     sam.eval()
-    transform = ResizeLongestSide(sam.image_encoder.img_size) 
+    transform = ResizeLongestSide(sam.image_encoder.img_size)
     for idx, inputs in enumerate(test_data_loader):
         # print progress every 10 images
         if idx % 10 == 0:
@@ -64,7 +72,9 @@ def sam_maskrcnn_eval(cfg, maskrcnn):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         sam_input[0]["original_size"] = (img.shape[0], img.shape[1])
         img = transform.apply_image(img)
-        sam_input[0]["image"] = torch.as_tensor(img.astype("float32")).permute(2, 0, 1).to(cfg.train.device)
+        sam_input[0]["image"] = (
+            torch.as_tensor(img.astype("float32")).permute(2, 0, 1).to(cfg.train.device)
+        )
         boxes = maskrcnn_output[0]["instances"].pred_boxes.tensor.detach().cpu().numpy()
         boxes = transform.apply_boxes(boxes, sam_input[0]["original_size"])
         sam_input[0]["boxes"] = torch.as_tensor(boxes).to(cfg.train.device)
@@ -76,9 +86,11 @@ def sam_maskrcnn_eval(cfg, maskrcnn):
         evaluator.process(inputs, maskrcnn_output)
 
     results = evaluator.evaluate()
-     
+
+
 def get_data_dicts(dataset, split):
-    import json 
+    import json
+
     dataset_dics = json.load(open("data/{}/{}_{}.json".format(dataset, dataset, split)))
     return dataset_dics
 
@@ -89,8 +101,9 @@ def main(args):
         DatasetCatalog.register(
             args.dataset + "_" + d, lambda d=d: get_data_dicts(args.dataset, d)
         )
-        MetadataCatalog.get(args.dataset + "_" + d).set(thing_classes=args.things_classes)
-
+        MetadataCatalog.get(args.dataset + "_" + d).set(
+            thing_classes=args.things_classes
+        )
 
     cfg = LazyConfig.load(args.config_file)
     cfg = LazyConfig.apply_overrides(cfg, args.opts)
@@ -103,12 +116,12 @@ def main(args):
     # customize optimizer parameters
     # customize train parameters
     cfg.train.output_dir = args.output_dir
-    cfg.train.seed = args.seed 
+    cfg.train.seed = args.seed
 
     # customize lr_multiplier parameters
     # customize dataloader parameters
     cfg.dataloader.train.dataset.names = args.dataset + "_train"
-    cfg.dataloader.test.dataset.names  = args.dataset + "_test"
+    cfg.dataloader.test.dataset.names = args.dataset + "_test"
     cfg.dataloader.evaluator.max_dets_per_image = args.detections_per_img
     cfg.dataloader.evaluator.output_dir = args.output_dir
 
@@ -117,15 +130,23 @@ def main(args):
     model = instantiate(cfg.model)
     model.to(cfg.train.device)
     for mode in ["mask", "box"]:
-        DetectionCheckpointer(model).load(args.box_checkpoint if mode == "box" else args.mask_checkpoint)
+        DetectionCheckpointer(model).load(
+            args.box_checkpoint if mode == "box" else args.mask_checkpoint
+        )
         print("evaluating {}...".format(mode))
         print(maskrcnn_eval(cfg, model))
-        
+
     sam_maskrcnn_eval(cfg, model)
+
 
 if __name__ == "__main__":
     parser = default_argument_parser()
     parser.add_argument("--dataset", type=str, default="dataset")
+    parser.add_argugment(
+        "--mvitv2",
+        type=str,
+        help="path to mvitv2 trained weights from experiments/mvitv2",
+    )
     args = parser.parse_args()
 
     args.things_classes = [args.dataset]
@@ -133,20 +154,24 @@ if __name__ == "__main__":
     # use mvitv2_in21k as backbone
     args.config_file = "config_files/cascade_mask_rcnn_mvitv2_b_in21k_3x.py"
     args.seed = 1129
-    args.output_dir = 'experiments/sam_maskrcnn_no_finetune/results/{}/mvitv2_b_in21k'.format(args.dataset)
-    
-    
+    args.output_dir = (
+        "experiments/sam_maskrcnn_no_finetune/results/{}/mvitv2_b_in21k".format(
+            args.dataset
+        )
+    )
+    args.box_checkpoint = args.mvitv2
+    args.mask_checkpoint = args.mvitv2
+
     if args.dataset == "iwp":
-        args.box_checkpoint = "experiments/mvitv2/results/iwp/mvitv2_b_in21k/model_0002599.pth"
-        args.mask_checkpoint = "experiments/mvitv2/results/iwp/mvitv2_b_in21k/model_0002199.pth"
         args.anchor_sizes = [[32], [64], [128], [256], [512]]
         args.detections_per_img = 500
     elif args.dataset == "rts":
-        args.box_checkpoint = "experiments/mvitv2/results/rts/mvitv2_b_in21k/model_0004599.pth"
-        args.mask_checkpoint = "experiments/mvitv2/results/rts/mvitv2_b_in21k/model_0005999.pth"
         args.anchor_sizes = [[16], [32], [64], [128], [256]]
-        args.detections_per_img = 100 
-    
+        args.detections_per_img = 100
+    elif args.dataset == "agr":
+        args.anchor_sizes = [[16], [32], [64], [128], [256]]
+        args.detections_per_img = 100
+
     launch(
         main,
         args.num_gpus,
